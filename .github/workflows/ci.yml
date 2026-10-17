@@ -11,8 +11,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # The toolchain the code is built with here and in Stelly: a newer
+      # clippy's new lints are a deliberate bump, not a red build overnight.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.96.0"
           components: clippy
       - uses: Swatinem/rust-cache@v2
       # The decoder and descriptors alone, then everything: what Stelly's
