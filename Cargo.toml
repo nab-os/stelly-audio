@@ -2,7 +2,7 @@
 name = "stelly-audio"
 version = "0.1.0"
 edition = "2021"
-description = "Audio analysis without network or database: decoding, resampling, descriptors (tempo, key, loudness, timbre) and CLAP's audio tower"
+description = "Audio analysis without a database: decoding, resampling, descriptors (tempo, key, loudness, timbre) and CLAP's two towers"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/nab-os/stelly-audio"
 keywords = ["audio", "music", "analysis", "clap", "mir"]
@@ -10,11 +10,19 @@ categories = ["multimedia::audio"]
 
 [features]
 default = ["clap"]
-# CLAP's audio tower through ONNX Runtime. The mel front end alone needs none.
-clap = ["dep:ort"]
-# Every codec and container symphonia has, for local files. MP3 alone is what
-# Stelly's excerpts need.
-all-codecs = ["symphonia/all-codecs", "symphonia/all-formats"]
+# CLAP's audio tower through ONNX Runtime, and the weights' manifest, checked
+# by hash. The mel front end alone needs none.
+clap = ["dep:ort", "dep:sha2"]
+# CLAP's text tower and its tokenizer.
+text = ["clap", "dep:tokenizers"]
+# Fetching the weights, blocking. Stelly fetches its own, async, against the
+# same manifest.
+fetch = ["clap", "dep:ureq"]
+# Opus, which symphonia demuxes but cannot decode.
+opus = ["dep:rusty-opus", "symphonia/ogg"]
+# Every codec and container symphonia has, and Opus, for local files. MP3
+# alone is what Stelly's excerpts need.
+all-codecs = ["symphonia/all-codecs", "symphonia/all-formats", "opus"]
 
 [dependencies]
 anyhow = "1"
@@ -23,8 +31,15 @@ ebur128 = "0.1.10"
 # changed `Session::builder`.
 ort = { version = "=2.0.0-rc.13", features = ["download-binaries"], optional = true }
 realfft = "3.5.0"
+# Pure Rust, bit-exact on the RFC 8251 vectors. opus-decoder is too, but its
+# transforms are plain O(n²) DFTs: 28s for a five-minute track where this
+# takes well under one.
+rusty-opus = { version = "1.0.1", optional = true }
 serde = { version = "1", features = ["derive"] }
+sha2 = { version = "0.10", optional = true }
 symphonia = { version = "0.6.1", default-features = false, features = ["mp3"] }
+tokenizers = { version = "0.23.2", default-features = false, features = ["onig"], optional = true }
+ureq = { version = "3", optional = true }
 
 [dev-dependencies]
 bytemuck = "1"

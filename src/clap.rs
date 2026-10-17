@@ -17,8 +17,8 @@ use realfft::{RealFftPlanner, RealToComplex};
 use std::path::Path;
 use std::sync::Arc;
 
-/// The weights' file names in a model directory. Fetching them is the
-/// server's business, see its `pipeline::models`.
+/// The weights' file names in a model directory; `models` has where they
+/// come from and their hashes.
 pub const CLAP_AUDIO: &str = "clap-htsat-unfused-audio.onnx";
 pub const CLAP_TEXT: &str = "clap-htsat-unfused-text.onnx";
 pub const CLAP_TOKENIZER: &str = "clap-htsat-unfused-tokenizer.json";
@@ -226,6 +226,48 @@ impl AudioEncoder {
         }
         normalise(&mut pooled);
         Ok(pooled)
+    }
+}
+
+/// The text tower, which shares the audio tower's space: a description lands
+/// near the audio it describes.
+#[cfg(feature = "text")]
+pub struct TextEncoder {
+    session: Session,
+    tokenizer: tokenizers::Tokenizer,
+}
+
+#[cfg(feature = "text")]
+impl TextEncoder {
+    pub fn load(model_dir: &Path) -> Result<Self> {
+        let onnx = model_dir.join(CLAP_TEXT);
+        let session = Session::builder()
+            .context("creating an ONNX session")?
+            .commit_from_file(&onnx)
+            .with_context(|| format!("loading {}", onnx.display()))?;
+        let tokenizer_path = model_dir.join(CLAP_TOKENIZER);
+        let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
+            .map_err(|e| anyhow::anyhow!("loading {}: {e}", tokenizer_path.display()))?;
+        Ok(Self { session, tokenizer })
+    }
+
+    /// L2-normalised 512-d embedding, in the same space as `AudioEncoder`'s.
+    /// One text a call: the export takes no attention mask, so a padded
+    /// batch would embed the padding too.
+    pub fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
+        let encoding = self
+            .tokenizer
+            .encode(text, true)
+            .map_err(|e| anyhow::anyhow!("tokenising {text:?}: {e}"))?;
+        let ids: Vec<i64> = encoding.get_ids().iter().map(|&v| v as i64).collect();
+        let shape = [1_i64, ids.len() as i64];
+        let outputs = self.session.run(ort::inputs![
+            "input_ids" => TensorRef::from_array_view((shape, ids.as_slice()))?,
+        ])?;
+        let (_, data) = outputs["text_embeds"].try_extract_tensor::<f32>()?;
+        let mut vector = data.to_vec();
+        normalise(&mut vector);
+        Ok(vector)
     }
 }
 
