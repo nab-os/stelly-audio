@@ -176,7 +176,8 @@ fn spectral(audio: &[f32], rate: u32) -> Spectral {
     let bin_hz = rate as f64 / N_FFT as f64;
     let edges = log_bands(rate, N_FFT, ONSET_BANDS);
 
-    let frames = (audio.len() - N_FFT) / HOP + 1;
+    // Not one whole frame: no frames, rather than an underflow.
+    let frames = audio.len().checked_sub(N_FFT).map_or(0, |rest| rest / HOP + 1);
     let mut band_energy = Vec::with_capacity(frames * ONSET_BANDS);
     let (mut centroid_sum, mut rolloff_sum, mut flatness_sum, mut voiced) = (0.0, 0.0, 0.0, 0usize);
     let mut power = vec![0f64; N_FFT / 2 + 1];
@@ -509,6 +510,14 @@ mod tests {
             let rate = d.onset_rate.unwrap();
             assert!((rate - bpm / 60.0).abs() < 0.5, "{bpm}: {rate} onsets/s");
         }
+    }
+
+    #[test]
+    fn onsets_of_too_little_audio_are_none() {
+        for len in [0, 1, N_FFT - 1] {
+            assert!(onsets(&vec![0.5; len], RATE).envelope.is_empty(), "{len} samples");
+        }
+        assert_eq!(onsets(&vec![0.5; N_FFT], RATE).envelope.len(), 1);
     }
 
     #[test]
