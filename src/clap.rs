@@ -229,6 +229,10 @@ impl AudioEncoder {
     }
 }
 
+/// The text tower reads at most this many tokens, special ones included.
+#[cfg(feature = "text")]
+pub const MAX_TOKENS: usize = 512;
+
 /// The text tower, which shares the audio tower's space: a description lands
 /// near the audio it describes.
 #[cfg(feature = "text")]
@@ -246,8 +250,16 @@ impl TextEncoder {
             .commit_from_file(&onnx)
             .with_context(|| format!("loading {}", onnx.display()))?;
         let tokenizer_path = model_dir.join(CLAP_TOKENIZER);
-        let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
+        let mut tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
             .map_err(|e| anyhow::anyhow!("loading {}: {e}", tokenizer_path.display()))?;
+        // The tokenizer sets no limit, and the model's positions end at
+        // `MAX_TOKENS`: a longer description would fail inside it.
+        tokenizer
+            .with_truncation(Some(tokenizers::TruncationParams {
+                max_length: MAX_TOKENS,
+                ..Default::default()
+            }))
+            .map_err(|e| anyhow::anyhow!("limiting the tokenizer: {e}"))?;
         Ok(Self { session, tokenizer })
     }
 
@@ -309,6 +321,20 @@ mod tests {
         assert_eq!(windows(&vec![0.1; WINDOW_SAMPLES * 2 + 1000]).len(), 2);
         assert_eq!(windows(&vec![0.1; WINDOW_SAMPLES * 2 + WINDOW_SAMPLES / 2]).len(), 3);
         assert_eq!(windows(&vec![0.1; 1000]).len(), 1);
+    }
+
+    /// A description past the model's positions is cut to fit, not an
+    /// error. Needs the text tower: `STELLY_MODEL_DIR=<dir> cargo test
+    /// --features text -- --ignored`.
+    #[cfg(feature = "text")]
+    #[test]
+    #[ignore]
+    fn a_long_description_still_embeds() {
+        let dir = std::path::PathBuf::from(std::env::var("STELLY_MODEL_DIR").unwrap());
+        let mut encoder = TextEncoder::load(&dir).unwrap();
+        let long = "dark rolling hard techno with a distorted kick ".repeat(200);
+        let embedding = encoder.embed(&long).unwrap();
+        assert_eq!(embedding.len(), EMBEDDING_DIMS);
     }
 
     /// Compare against transformers' own extractor. Needs reference files
