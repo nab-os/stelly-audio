@@ -1,0 +1,22 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # The decoder and descriptors alone, then everything: what Stelly's
+      # excerpts need and what stelly-mix needs are both kept building.
+      - run: cargo test --locked --no-default-features
+      - run: cargo test --locked --features all-codecs,text,fetch
+      - run: cargo clippy --locked --features all-codecs,text,fetch --all-targets -- -D warnings

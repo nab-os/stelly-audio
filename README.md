@@ -25,8 +25,19 @@ Shared by [Stelly](https://github.com/nab-os) and
 
 ```toml
 [dependencies]
-stelly-audio = { git = "https://github.com/nab-os/stelly-audio", features = ["all-codecs"] }
+stelly-audio = { git = "https://github.com/nab-os/stelly-audio", tag = "v0.1.0", features = ["all-codecs"] }
 ```
+
+Depend on a tag, not the branch: a bump is then an edit, not whatever
+`cargo update` finds.
+
+## ONNX Runtime
+
+`ort` is a pre-release, pinned here exactly (`=2.0.0-rc.13`), and only one
+version of it can link into a build. This is where the pin lives: anything
+that depends on stelly-audio and names `ort` itself, Stelly's server for its
+text tower, pins the same, and a bump happens here first, then there, in one
+go.
 
 ## License
 
